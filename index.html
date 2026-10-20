@@ -30,6 +30,9 @@
       <h1 class="app-title">Mes Concerts</h1>
     </div>
     <div class="header-actions">
+      <button class="btn-icon-header" id="btn-supabase-status" title="Connexion Cloud Supabase">
+        ☁️
+      </button>
       <button class="btn-icon-header" id="btn-open-install-guide" title="Guide installation iPhone">
         📱
       </button>
@@ -348,60 +351,56 @@
   </section>
 
   <!-- =========================================================================
-       VUE 4 : SAUVEGARDES & CONFIDENTIALITÉ
+       VUE 4 : SAUVEGARDES & CLOUD SUPABASE
        ========================================================================= -->
   <section class="view-container" id="view-settings">
-    <!-- Carte Coffre-fort & Confidentialité -->
-    <div class="form-card" style="border: 1px solid rgba(139, 92, 246, 0.35);">
-      <h2 class="form-section-title" style="color: #c4b5fd;">🔐 Coffre-fort & Confidentialité</h2>
+    <!-- Carte Supabase Cloud -->
+    <div class="form-card" style="border: 1px solid rgba(16, 185, 129, 0.35);">
+      <h2 class="form-section-title" style="color: #6ee7b7;">☁️ Base de données Cloud Supabase</h2>
       <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">
-        <strong>Zéro donnée sur GitHub :</strong> Aucun concert n'est stocké dans le code public de votre site. Vos données restent strictement sur votre appareil et peuvent être protégées par un <strong>mot de passe chiffré en AES-256 bits</strong>.
+        Vos concerts sont synchronisés en direct sur votre base de données sécurisée <strong>Supabase</strong>. Vous y accédez en toute sécurité depuis votre iPhone et votre ordinateur sans aucun stockage local permanent.
       </p>
 
       <div class="live-cost-banner" style="margin: 0 0 16px 0;">
-        <span class="live-cost-label">Statut du Coffre :</span>
-        <span class="live-cost-value" id="vault-status-badge" style="font-size: 1.05rem;">🔓 Local non chiffré</span>
+        <span class="live-cost-label">Statut Supabase :</span>
+        <span class="live-cost-value" id="supabase-status-badge" style="font-size: 1.05rem; color: #34d399;">Vérification...</span>
+      </div>
+
+      <div style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 16px; word-break: break-all;">
+        <div><strong>Projet :</strong> jokiruvgopcmumacfcie.supabase.co</div>
+        <div id="supabase-user-display" style="margin-top: 4px;"><strong>Compte :</strong> Non connecté (Mode Clé Publishable)</div>
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 12px;">
-        <button class="btn btn-primary" id="btn-toggle-vault-pw">
-          🔑 Définir / Modifier le mot de passe
+        <button class="btn btn-primary" id="btn-refresh-supabase">
+          🔄 Synchroniser maintenant avec Supabase
         </button>
 
-        <button class="btn btn-secondary" id="btn-export-vault">
-          📦 Exporter le Coffre-fort chiffré (.vault)
+        <button class="btn btn-secondary" id="btn-open-supabase-auth">
+          🔐 Connexion / Mon Compte Supabase
         </button>
 
-        <button class="btn btn-secondary" id="btn-import-vault">
-          📥 Ouvrir un Coffre-fort chiffré (.vault)
+        <button class="btn btn-secondary" id="btn-upload-cleaned-supabase">
+          🚀 Envoyer concerts_cleaned.csv vers Supabase
         </button>
-        <input type="file" id="input-import-vault" accept=".vault,.json" class="hidden">
+        <input type="file" id="input-import-csv" accept=".csv" class="hidden">
       </div>
     </div>
 
-    <!-- Carte Sauvegardes & CSV -->
+    <!-- Carte Outils & Export -->
     <div class="form-card">
-      <h2 class="form-section-title">📂 Fichiers CSV & Transfert</h2>
+      <h2 class="form-section-title">📂 Exportation & Application</h2>
       <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">
-        Exportez ou importez vos données en format CSV (sans aucun numéro d'artiste entre parenthèses).
+        Téléchargez une copie de vos données en CSV ou consultez le guide d'installation sur votre iPhone.
       </p>
 
       <div style="display: flex; flex-direction: column; gap: 12px;">
         <button class="btn btn-secondary" id="btn-export-csv">
-          📥 Télécharger le carnet en CSV nettoyé
+          📥 Exporter le carnet en CSV
         </button>
-
-        <button class="btn btn-secondary" id="btn-import-csv">
-          📤 Importer un fichier CSV (ex: concerts_cleaned.csv)
-        </button>
-        <input type="file" id="input-import-csv" accept=".csv" class="hidden">
 
         <button class="btn btn-secondary" onclick="document.getElementById('modal-install-guide').classList.remove('hidden')">
           📱 Guide d'installation sur iPhone
-        </button>
-
-        <button class="btn btn-danger" id="btn-clear-data" style="margin-top: 10px;">
-          🗑️ Vider toutes les données locales
         </button>
       </div>
     </div>
@@ -614,82 +613,50 @@
   </div>
 
   <!-- =========================================================================
-       MODAL : DÉVERROUILLER LE COFFRE-FORT (LOCK SCREEN)
+       MODAL : AUTHENTIFICATION CLOUD SUPABASE
        ========================================================================= -->
-  <div class="modal-overlay hidden" id="modal-unlock">
-    <div class="modal-sheet" style="max-width: 440px;">
-      <div class="modal-header">
-        <h3 class="modal-title">🔒 Coffre-fort verrouillé</h3>
-      </div>
-      <div class="modal-body" style="text-align: center;">
-        <div style="font-size: 3rem; margin-bottom: 12px;">🔐</div>
-        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 18px;">
-          Entrez votre mot de passe pour déverrouiller vos concerts sur cet appareil.
-        </p>
-        <form id="form-unlock-vault">
-          <div class="form-group">
-            <input type="password" id="input-unlock-password" class="form-control" placeholder="Mot de passe du coffre..." required autofocus style="text-align: center; font-size: 1.1rem; letter-spacing: 2px;">
-          </div>
-          <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
-            🔓 Déverrouiller
-          </button>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <!-- =========================================================================
-       MODAL : CONFIGURER LE MOT DE PASSE DU COFFRE
-       ========================================================================= -->
-  <div class="modal-overlay hidden" id="modal-set-password">
+  <div class="modal-overlay hidden" id="modal-supabase-auth">
     <div class="modal-sheet" style="max-width: 460px;">
       <div class="modal-header">
-        <h3 class="modal-title">🔑 Mot de passe du Coffre-fort</h3>
-        <button class="btn-close-modal" id="btn-close-set-pw">×</button>
+        <h3 class="modal-title">☁️ Compte Cloud Supabase</h3>
+        <button class="btn-close-modal" id="btn-close-supabase-auth">×</button>
       </div>
       <div class="modal-body">
-        <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 16px;">
-          Ce mot de passe chiffre vos données en <strong>AES-256</strong>. Vous serez la seule personne à pouvoir les ouvrir sur votre téléphone ou votre ordinateur.
-        </p>
-        <form id="form-set-vault-pw">
-          <div class="form-group">
-            <label class="form-label" for="input-new-password">Nouveau mot de passe</label>
-            <input type="password" id="input-new-password" class="form-control" placeholder="Minimum 4 caractères..." minlength="4" required>
+        <div id="auth-logged-in-view" class="hidden">
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 12px;">
+            Vous êtes connectée avec :
+          </p>
+          <div id="auth-user-email-badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; padding: 10px 14px; border-radius: var(--radius-md); font-weight: 600; font-size: 0.95rem; margin-bottom: 20px; word-break: break-all;">
+            user@example.com
           </div>
-          <div class="form-group">
-            <label class="form-label" for="input-confirm-password">Confirmer le mot de passe</label>
-            <input type="password" id="input-confirm-password" class="form-control" placeholder="Retapez le mot de passe..." minlength="4" required>
-          </div>
-          <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
-            💾 Chiffrer mes données
+          <button class="btn btn-danger" id="btn-supabase-logout">
+            🚪 Se déconnecter
           </button>
-        </form>
-      </div>
-    </div>
-  </div>
+        </div>
 
-  <!-- =========================================================================
-       MODAL : OUVRIR UN FICHIER .VAULT
-       ========================================================================= -->
-  <div class="modal-overlay hidden" id="modal-open-vault-file">
-    <div class="modal-sheet" style="max-width: 460px;">
-      <div class="modal-header">
-        <h3 class="modal-title">📥 Ouvrir un fichier .vault</h3>
-        <button class="btn-close-modal" id="btn-close-open-vault">×</button>
-      </div>
-      <div class="modal-body">
-        <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 16px;">
-          Entrez le mot de passe utilisé lors de la création de ce coffre chiffré.
-        </p>
-        <form id="form-open-vault-file">
-          <div class="form-group">
-            <label class="form-label" for="input-vault-file-pw">Mot de passe du fichier</label>
-            <input type="password" id="input-vault-file-pw" class="form-control" placeholder="Mot de passe..." required>
-          </div>
-          <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
-            🔓 Déchiffrer et importer
-          </button>
-        </form>
+        <div id="auth-logged-out-view">
+          <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 16px;">
+            Connectez-vous pour synchroniser vos concerts en direct entre votre iPhone et votre ordinateur.
+          </p>
+          <form id="form-supabase-login">
+            <div class="form-group">
+              <label class="form-label" for="input-auth-email">Adresse Email</label>
+              <input type="email" id="input-auth-email" class="form-control" placeholder="votre@email.com" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="input-auth-password">Mot de passe</label>
+              <input type="password" id="input-auth-password" class="form-control" placeholder="Mot de passe..." minlength="6" required>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 14px;">
+              <button type="submit" class="btn btn-primary" id="btn-auth-signin">
+                Se connecter
+              </button>
+              <button type="button" class="btn btn-secondary" id="btn-auth-signup">
+                Créer un compte
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   </div>
@@ -728,12 +695,12 @@
   <datalist id="dl-acc"></datalist>
 
   <!-- =========================================================================
-       SCRIPTS (Chargement hors-ligne local)
+       SCRIPTS (Chargement hors-ligne local & Cloud Supabase)
        ========================================================================= -->
   <script src="js/lib/chart.min.js"></script>
   <script src="js/lib/papaparse.min.js"></script>
-  <script src="js/crypto.js"></script>
-  <script src="js/initial-data.js"></script>
+  <script src="js/lib/supabase.min.js"></script>
+  <script src="js/supabase-config.js"></script>
   <script src="js/data.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/app.js"></script>

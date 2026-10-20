@@ -1,18 +1,18 @@
 // Service Worker - Mes Concerts PWA
-const CACHE_NAME = 'mes-concerts-v2.0';
+const CACHE_NAME = 'mes-concerts-v3.0';
 
 const ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
   './css/style.css',
-  './js/crypto.js',
-  './js/initial-data.js',
+  './js/lib/chart.min.js',
+  './js/lib/papaparse.min.js',
+  './js/lib/supabase.min.js',
+  './js/supabase-config.js',
   './js/data.js',
   './js/charts.js',
   './js/app.js',
-  './js/lib/chart.min.js',
-  './js/lib/papaparse.min.js',
   './icons/apple-touch-icon.png',
   './icons/icon-192.png',
   './icons/icon-512.png',

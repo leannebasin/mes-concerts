@@ -10,3 +10,4 @@ concerts_cleaned.csv
 cleaned_concerts.json
 *.vault
 scripts/
+supabase_schema.sql

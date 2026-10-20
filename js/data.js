@@ -1,7 +1,4 @@
-// DataManager - Gestion des données de concerts (LocalStorage, Chiffrement AES-GCM, CSV, Calculs)
-
-const STORAGE_KEY = 'mes_concerts_events_v2';
-const SETTINGS_KEY = 'mes_concerts_settings_v2';
+// DataManager - Connecteur Cloud Supabase & Gestionnaire de Concerts
 
 const CHOIX_PLACEMENT = [
   'Fosse',
@@ -31,8 +28,6 @@ const TYPES_EVENT_DEFAUT = [
 ];
 
 // Nettoie automatiquement les numéros entre parenthèses à la fin des noms d'artistes
-// Ex: "Zélie (5)" -> "Zélie"
-// Ex: "Star Academy 2024 (1)" -> "Star Academy 2024"
 function cleanArtistNames(val) {
   if (!val) return '';
   return val
@@ -47,47 +42,87 @@ function cleanArtistNames(val) {
 class ConcertsDataManager {
   constructor() {
     this.events = [];
-    this.isEncrypted = false;
-    this.isUnlocked = true;
-    this.currentPassword = null;
-    this.init();
+    this.isOnline = navigator.onLine;
+    this.supabaseConnected = false;
+    this.currentUser = null;
   }
 
-  init() {
-    try {
-      const settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
-      if (settings.hasPassword) {
-        this.isEncrypted = true;
-        this.isUnlocked = false;
-        // Données en attente de déverrouillage
-        return;
-      }
+  async init() {
+    // 1. Initialiser la connexion Supabase
+    await this.initSupabase();
 
-      // Tentative de chargement v2, ou migration depuis v1
-      const stored = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('mes_concerts_events_v1');
-      if (stored) {
-        this.events = JSON.parse(stored);
-      } else if (window.INITIAL_CONCERTS && Array.isArray(window.INITIAL_CONCERTS) && window.INITIAL_CONCERTS.length > 0) {
-        this.events = JSON.parse(JSON.stringify(window.INITIAL_CONCERTS));
-      } else {
-        this.events = [];
-      }
-    } catch (e) {
-      console.error('Erreur chargement localStorage:', e);
-      this.events = [];
+    // 2. Charger les données depuis Supabase
+    await this.loadFromSupabase();
+  }
+
+  async initSupabase() {
+    if (!window.supabaseClient) {
+      console.warn('Client Supabase non disponible.');
+      return;
     }
 
-    // Nettoyage des artistes et recalcul des coûts
-    this.normalizeEvents();
-    if (this.events.length > 0) {
-      this.save();
+    try {
+      // Vérifier si un utilisateur est déjà connecté
+      const { data: { session } } = await window.supabaseClient.auth.getSession();
+      if (session && session.user) {
+        this.currentUser = session.user;
+      }
+
+      // Écouter les changements d'authentification
+      window.supabaseClient.auth.onAuthStateChange(async (event, session) => {
+        this.currentUser = session?.user || null;
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          await this.loadFromSupabase();
+          if (window.app) {
+            window.app.renderCarnet();
+            window.app.populateDatalists();
+            window.app.updateSupabaseStatus();
+          }
+        } else if (event === 'SIGNED_OUT') {
+          this.currentUser = null;
+          await this.loadFromSupabase();
+          if (window.app) {
+            window.app.renderCarnet();
+            window.app.updateSupabaseStatus();
+          }
+        }
+      });
+
+      this.supabaseConnected = true;
+    } catch (e) {
+      console.error('Erreur initialisation Supabase Auth:', e);
+    }
+  }
+
+  async loadFromSupabase() {
+    if (!window.supabaseClient) return [];
+
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('concerts')
+        .select('*')
+        .order('date', { ascending: false });
+
+      if (error) {
+        console.warn('Erreur lecture Supabase (table non créée ou RLS):', error.message);
+        this.supabaseConnected = false;
+        return [];
+      }
+
+      this.events = data || [];
+      this.normalizeEvents();
+      this.supabaseConnected = true;
+      return this.events;
+    } catch (err) {
+      console.error('Exception chargement Supabase:', err);
+      this.supabaseConnected = false;
+      return [];
     }
   }
 
   normalizeEvents() {
     this.events.forEach((item, idx) => {
       if (!item.id) item.id = 'c_' + (idx + 1);
-      // Nettoyage automatique des parenthèses
       item.artistes = cleanArtistNames(item.artistes);
       item.premiere_partie = cleanArtistNames(item.premiere_partie);
       item.guests = cleanArtistNames(item.guests);
@@ -98,63 +133,7 @@ class ConcertsDataManager {
     });
   }
 
-  async save() {
-    try {
-      if (this.isEncrypted && this.currentPassword) {
-        // Sauvegarde chiffrée AES-GCM
-        const encrypted = await window.cryptoVault.encrypt(this.events, this.currentPassword);
-        localStorage.setItem(STORAGE_KEY, encrypted);
-      } else {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.events));
-      }
-    } catch (e) {
-      console.error('Erreur sauvegarde localStorage:', e);
-    }
-  }
-
-  // Déverrouille le coffre-fort avec le mot de passe
-  async unlock(password) {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (!stored) {
-        this.events = [];
-        this.isUnlocked = true;
-        this.currentPassword = password;
-        return true;
-      }
-
-      const decrypted = await window.cryptoVault.decrypt(stored, password);
-      this.events = decrypted;
-      this.normalizeEvents();
-      this.isUnlocked = true;
-      this.currentPassword = password;
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  // Active le verrouillage par mot de passe
-  async setPassword(password) {
-    this.isEncrypted = true;
-    this.currentPassword = password;
-    const settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
-    settings.hasPassword = true;
-    settings.passwordHint = 'AES-256 Vault';
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    await this.save();
-  }
-
-  // Désactive le mot de passe
-  async removePassword() {
-    this.isEncrypted = false;
-    this.currentPassword = null;
-    localStorage.removeItem(SETTINGS_KEY);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.events));
-  }
-
   getAll() {
-    if (!this.isUnlocked) return [];
     return [...this.events].sort((a, b) => {
       const dateA = a.date || '';
       const dateB = b.date || '';
@@ -167,7 +146,7 @@ class ConcertsDataManager {
     return this.events.find(e => e.id === id);
   }
 
-  add(data) {
+  async add(data) {
     const newItem = {
       id: 'c_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
       date: data.date || new Date().toISOString().split('T')[0],
@@ -194,13 +173,30 @@ class ConcertsDataManager {
       placement: data.placement || 'Fosse'
     };
 
+    if (this.currentUser) {
+      newItem.user_id = this.currentUser.id;
+    }
+
     newItem.cout_total = this.calculateCost(newItem);
+
+    // Sauvegarde Cloud Supabase
+    if (window.supabaseClient) {
+      try {
+        const { error } = await window.supabaseClient
+          .from('concerts')
+          .insert([newItem]);
+        if (error) throw error;
+      } catch (err) {
+        console.error('Erreur insertion Supabase:', err);
+        throw new Error('Erreur enregistrement Supabase : ' + (err.message || err));
+      }
+    }
+
     this.events.unshift(newItem);
-    this.save();
     return newItem;
   }
 
-  update(id, data) {
+  async update(id, data) {
     const idx = this.events.findIndex(e => e.id === id);
     if (idx === -1) return null;
 
@@ -221,19 +217,42 @@ class ConcertsDataManager {
     updated.merch = updated.merch_inconnu ? null : (updated.merch !== null && updated.merch !== '' ? Number(updated.merch) : null);
 
     updated.cout_total = this.calculateCost(updated);
+
+    // Mise à jour Cloud Supabase
+    if (window.supabaseClient) {
+      try {
+        const { error } = await window.supabaseClient
+          .from('concerts')
+          .update(updated)
+          .eq('id', id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('Erreur mise à jour Supabase:', err);
+        throw new Error('Erreur mise à jour Supabase : ' + (err.message || err));
+      }
+    }
+
     this.events[idx] = updated;
-    this.save();
     return updated;
   }
 
-  delete(id) {
-    const prevCount = this.events.length;
-    this.events = this.events.filter(e => e.id !== id);
-    if (this.events.length !== prevCount) {
-      this.save();
-      return true;
+  async delete(id) {
+    // Suppression Cloud Supabase
+    if (window.supabaseClient) {
+      try {
+        const { error } = await window.supabaseClient
+          .from('concerts')
+          .delete()
+          .eq('id', id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('Erreur suppression Supabase:', err);
+        throw new Error('Erreur suppression Supabase : ' + (err.message || err));
+      }
     }
-    return false;
+
+    this.events = this.events.filter(e => e.id !== id);
+    return true;
   }
 
   calculateCost(item) {
@@ -258,7 +277,6 @@ class ConcertsDataManager {
   }
 
   getUniqueValues(field, isMulti = false) {
-    if (!this.isUnlocked) return [];
     const values = new Set();
     this.events.forEach(item => {
       const val = item[field];
@@ -281,7 +299,6 @@ class ConcertsDataManager {
   }
 
   getYearsList() {
-    if (!this.isUnlocked) return [];
     const years = new Set();
     this.events.forEach(item => {
       if (item.annee && item.annee !== 'Inconnue') {
@@ -293,7 +310,7 @@ class ConcertsDataManager {
     return Array.from(years).sort().reverse();
   }
 
-  // Exportation CSV avec artistes nettoyés
+  // Exportation CSV
   exportCSV() {
     const columns = [
       "Date", "Année", "Type d'événement", "Nom de l'événement", "Artiste(s) principal(aux)",
@@ -357,37 +374,8 @@ class ConcertsDataManager {
     URL.revokeObjectURL(url);
   }
 
-  // Exportation Coffre-fort Chiffré AES-256
-  async exportVault(password) {
-    if (!password) throw new Error('Mot de passe requis pour chiffrer le coffre-fort.');
-    const encryptedString = await window.cryptoVault.encrypt(this.events, password);
-    const blob = new Blob([encryptedString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `mes_concerts.vault`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }
-
-  // Importation Coffre-fort Chiffré AES-256
-  async importVault(vaultString, password) {
-    const decrypted = await window.cryptoVault.decrypt(vaultString, password);
-    if (!Array.isArray(decrypted)) {
-      throw new Error('Contenu de coffre-fort non reconnu.');
-    }
-    this.events = decrypted;
-    this.normalizeEvents();
-    this.isUnlocked = true;
-    this.currentPassword = password;
-    await this.setPassword(password);
-    return this.events.length;
-  }
-
-  // Importation CSV avec nettoyage automatique des artistes
-  importCSV(file, replace = true) {
+  // Importation CSV vers Supabase
+  importCSV(file, replace = false) {
     return new Promise((resolve, reject) => {
       if (!window.Papa) {
         reject(new Error('PapaParse non chargé'));
@@ -397,7 +385,7 @@ class ConcertsDataManager {
       window.Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
-        complete: (results) => {
+        complete: async (results) => {
           try {
             const parsed = [];
             results.data.forEach((row, idx) => {
@@ -441,6 +429,10 @@ class ConcertsDataManager {
                 placement: row["Placement"] || 'Fosse'
               };
 
+              if (this.currentUser) {
+                item.user_id = this.currentUser.id;
+              }
+
               item.cout_total = this.calculateCost(item);
               if (item.artistes || item.nom_evenement) {
                 parsed.push(item);
@@ -452,14 +444,15 @@ class ConcertsDataManager {
               return;
             }
 
-            if (replace) {
-              this.events = parsed;
-            } else {
-              this.events = [...parsed, ...this.events];
+            // Insertion dans Supabase
+            if (window.supabaseClient) {
+              const { error } = await window.supabaseClient
+                .from('concerts')
+                .upsert(parsed);
+              if (error) throw error;
             }
 
-            this.normalizeEvents();
-            this.save();
+            await this.loadFromSupabase();
             resolve({ count: parsed.length });
           } catch (err) {
             reject(err);

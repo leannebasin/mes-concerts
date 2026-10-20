@@ -1,4 +1,4 @@
-// Application Controller - Mes Concerts PWA
+// Application Controller - Mes Concerts PWA (Mode Supabase Cloud & Multi-appareils)
 
 class ConcertsApp {
   constructor() {
@@ -12,7 +12,7 @@ class ConcertsApp {
     this.init();
   }
 
-  init() {
+  async init() {
     // 1. Enregistrement Service Worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
@@ -22,32 +22,27 @@ class ConcertsApp {
       });
     }
 
-    // 2. Initialisation des composants
+    // 2. Initialisation des composants UI
     this.setupNavigation();
     this.setupFiltersAndSearch();
     this.setupAddForm();
     this.setupEditModal();
     this.setupSettings();
+    this.setupSupabaseAuthModal();
     this.setupInstallPrompt();
 
-    // 3. Rendu initial & vérification du verrouillage
-    this.checkVaultLock();
+    // 3. Initialisation des données Cloud Supabase
+    if (window.dataManager) {
+      await window.dataManager.init();
+    }
+
+    // 4. Rendu initial
     this.renderCarnet();
     this.populateDatalists();
-    this.updateVaultStatusBadge();
+    this.updateSupabaseStatus();
 
-    // 4. Détection iOS Standalone
+    // 5. Détection iOS Standalone
     this.checkStandaloneMode();
-  }
-
-  checkVaultLock() {
-    if (!window.dataManager.isUnlocked) {
-      const modal = document.getElementById('modal-unlock');
-      if (modal) {
-        modal.classList.remove('hidden');
-        document.body.style.overflow = 'hidden';
-      }
-    }
   }
 
   // Navigation entre les onglets
@@ -61,7 +56,6 @@ class ConcertsApp {
       });
     });
 
-    // Boutons de raccourci internes (ex: "Ajouter un concert" depuis l'état vide)
     document.querySelectorAll('[data-switch-tab]').forEach(el => {
       el.addEventListener('click', () => {
         const tab = el.getAttribute('data-switch-tab');
@@ -73,19 +67,16 @@ class ConcertsApp {
   switchTab(tab) {
     this.currentTab = tab;
 
-    // Mise à jour de la barre de navigation
     document.querySelectorAll('.nav-item').forEach(btn => {
       btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
     });
 
-    // Mise à jour des vues
     document.querySelectorAll('.view-container').forEach(view => {
       view.classList.toggle('active', view.id === `view-${tab}`);
     });
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
-    // Rendu spécifique si nécessaire
     if (tab === 'carnet') {
       this.renderCarnet();
     } else if (tab === 'stats') {
@@ -114,7 +105,6 @@ class ConcertsApp {
       });
     }
 
-    // Bouton bascule vue Cartes / Tableau
     const toggleViewBtn = document.getElementById('btn-toggle-view');
     if (toggleViewBtn) {
       toggleViewBtn.addEventListener('click', () => {
@@ -211,31 +201,34 @@ class ConcertsApp {
 
     if (items.length === 0) {
       listContainer.innerHTML = `
-        <div class="empty-state" style="max-width: 500px; margin: 30px auto; background: var(--surface-color); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); padding: 26px;">
-          <div class="empty-icon">🔒</div>
-          <h3 style="font-size: 1.25rem; margin-bottom: 8px;">Votre carnet est prêt (Mode Privé)</h3>
-          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px;">
-            Vos données personnelles ne sont pas stockées dans le code public de GitHub. Pour charger vos concerts sur cet appareil :
+        <div class="empty-state" style="max-width: 520px; margin: 30px auto; background: var(--surface-color); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); padding: 26px; text-align: center;">
+          <div class="empty-icon">☁️</div>
+          <h3 style="font-size: 1.25rem; margin-bottom: 8px;">Aucun concert dans Supabase</h3>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 18px;">
+            Vos données sont gérées dans le cloud sécurisé Supabase. Si vous venez de créer votre projet, assurez-vous d'avoir exécuté le script SQL fourni dans Supabase.
           </p>
           <div style="display: flex; flex-direction: column; gap: 10px;">
-            <button class="btn btn-primary" id="btn-empty-import-csv">
-              📂 Importer concerts_cleaned.csv
+            <button class="btn btn-primary" id="btn-empty-refresh-supabase">
+              🔄 Actualiser depuis Supabase
             </button>
-            <button class="btn btn-secondary" id="btn-empty-import-vault">
-              📦 Ouvrir un coffre .vault
+            <button class="btn btn-secondary" id="btn-empty-upload-csv">
+              📂 Envoyer concerts_cleaned.csv vers Supabase
             </button>
             <button class="btn btn-secondary" data-switch-tab="ajouter">
-              ➕ Saisir un nouveau concert
+              ➕ Saisir un concert manuellement
             </button>
           </div>
         </div>
       `;
       listContainer.querySelector('[data-switch-tab]')?.addEventListener('click', () => this.switchTab('ajouter'));
-      listContainer.querySelector('#btn-empty-import-csv')?.addEventListener('click', () => {
-        document.getElementById('input-import-csv')?.click();
+      listContainer.querySelector('#btn-empty-refresh-supabase')?.addEventListener('click', async () => {
+        await window.dataManager.loadFromSupabase();
+        this.renderCarnet();
+        this.populateDatalists();
+        this.updateSupabaseStatus();
       });
-      listContainer.querySelector('#btn-empty-import-vault')?.addEventListener('click', () => {
-        document.getElementById('input-import-vault')?.click();
+      listContainer.querySelector('#btn-empty-upload-csv')?.addEventListener('click', () => {
+        document.getElementById('input-import-csv')?.click();
       });
       return;
     }
@@ -303,7 +296,6 @@ class ConcertsApp {
 
     listContainer.innerHTML = html;
 
-    // Événements boutons de cartes
     listContainer.querySelectorAll('.btn-toggle-details').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-id');
@@ -386,13 +378,11 @@ class ConcertsApp {
     const form = document.getElementById('form-add-concert');
     if (!form) return;
 
-    // Date par défaut aujourd'hui
     const dateInput = document.getElementById('add-date');
     if (dateInput && !dateInput.value) {
       dateInput.value = new Date().toISOString().split('T')[0];
     }
 
-    // Calcul du coût en temps réel
     const costInputs = [
       'add-billet-paye', 'add-prix-billet', 'add-cb-billet-inc',
       'add-prix-trans', 'add-cb-trans-inc',
@@ -408,16 +398,14 @@ class ConcertsApp {
       }
     });
 
-    // Checkbox inconnu toggle disabled
     this.setupUnknownToggle('add-cb-billet-inc', 'add-prix-billet', 'add');
     this.setupUnknownToggle('add-cb-trans-inc', 'add-prix-trans', 'add');
     this.setupUnknownToggle('add-cb-log-inc', 'add-prix-log', 'add');
     this.setupUnknownToggle('add-cb-merch-inc', 'add-prix-merch', 'add');
 
-    // Soumission du formulaire
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      this.handleAddSubmit();
+      await this.handleAddSubmit();
     });
 
     this.initTagInputs('form-add');
@@ -463,7 +451,7 @@ class ConcertsApp {
     }
   }
 
-  handleAddSubmit() {
+  async handleAddSubmit() {
     const artistes = this.getTagValues('add-tags-artistes');
     if (!artistes || artistes.length === 0) {
       this.showToast('Veuillez renseigner au moins un artiste principal.', 'error');
@@ -521,11 +509,14 @@ class ConcertsApp {
       placement: placementVal
     };
 
-    window.dataManager.add(newConcert);
-
-    this.showToast(`Événement avec ${artistes.join(', ')} enregistré !`, 'success');
-    this.resetAddForm();
-    this.switchTab('carnet');
+    try {
+      await window.dataManager.add(newConcert);
+      this.showToast(`Événement avec ${artistes.join(', ')} enregistré dans Supabase !`, 'success');
+      this.resetAddForm();
+      this.switchTab('carnet');
+    } catch (err) {
+      this.showToast(err.message, 'error');
+    }
   }
 
   resetAddForm() {
@@ -535,7 +526,6 @@ class ConcertsApp {
     const dateInput = document.getElementById('add-date');
     if (dateInput) dateInput.value = new Date().toISOString().split('T')[0];
 
-    // Réinitialiser les tags
     ['artistes', 'openers', 'guests', 'merch', 'acc'].forEach(key => {
       this.clearTags(`add-tags-${key}`);
     });
@@ -544,7 +534,6 @@ class ConcertsApp {
     this.populateDatalists();
   }
 
-  // Tag Inputs (gestion des chips avec autocomplétion)
   initTagInputs(scope) {
     const configs = [
       { id: `${scope === 'form-add' ? 'add' : 'edit'}-tags-artistes`, inputId: `${scope === 'form-add' ? 'add' : 'edit'}-input-artistes`, field: 'artistes' },
@@ -575,7 +564,6 @@ class ConcertsApp {
           }
         });
 
-        // Bouton "+" adjacent s'il existe
         const addBtn = container.parentElement?.querySelector('.btn-add-tag');
         if (addBtn) {
           addBtn.addEventListener('click', () => {
@@ -595,7 +583,6 @@ class ConcertsApp {
     const clean = value.trim();
     if (!this.activeTagInputs[containerId]) this.activeTagInputs[containerId] = [];
 
-    // Vérifier doublon
     if (!this.activeTagInputs[containerId].includes(clean)) {
       this.activeTagInputs[containerId].push(clean);
       this.renderTags(containerId);
@@ -634,7 +621,6 @@ class ConcertsApp {
     if (!container) return;
 
     const input = container.querySelector('.tag-input');
-    // Supprimer les anciens chips
     container.querySelectorAll('.tag-chip').forEach(c => c.remove());
 
     const values = this.activeTagInputs[containerId] || [];
@@ -687,9 +673,9 @@ class ConcertsApp {
     });
 
     if (form) {
-      form.addEventListener('submit', (e) => {
+      form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        this.handleEditSubmit();
+        await this.handleEditSubmit();
       });
     }
   }
@@ -758,7 +744,7 @@ class ConcertsApp {
     this.editingId = null;
   }
 
-  handleEditSubmit() {
+  async handleEditSubmit() {
     if (!this.editingId) return;
 
     const artistes = this.getTagValues('edit-tags-artistes');
@@ -793,44 +779,52 @@ class ConcertsApp {
     const accompagnateursVal = this.getTagValues('edit-tags-acc').join(', ');
     const placementVal = document.getElementById('edit-placement')?.value;
 
-    window.dataManager.update(this.editingId, {
-      date: dateVal,
-      type: typeVal,
-      nom_evenement: nomEventVal,
-      artistes: artistes.join(', '),
-      premiere_partie: openersVal,
-      guests: guestsVal,
-      lieu: lieuVal,
-      ville: villeVal,
-      pays: paysVal,
-      billet_paye: billetPaye,
-      prix_billet_inconnu: billetInc,
-      prix_billet: prixBillet,
-      transport_inconnu: transInc,
-      transport: prixTrans,
-      logement_inconnu: logInc,
-      logement: prixLog,
-      merch_inconnu: merchInc,
-      merch: prixMerch,
-      articles_merch: merchArticlesVal,
-      accompagnateurs: accompagnateursVal,
-      placement: placementVal
-    });
+    try {
+      await window.dataManager.update(this.editingId, {
+        date: dateVal,
+        type: typeVal,
+        nom_evenement: nomEventVal,
+        artistes: artistes.join(', '),
+        premiere_partie: openersVal,
+        guests: guestsVal,
+        lieu: lieuVal,
+        ville: villeVal,
+        pays: paysVal,
+        billet_paye: billetPaye,
+        prix_billet_inconnu: billetInc,
+        prix_billet: prixBillet,
+        transport_inconnu: transInc,
+        transport: prixTrans,
+        logement_inconnu: logInc,
+        logement: prixLog,
+        merch_inconnu: merchInc,
+        merch: prixMerch,
+        articles_merch: merchArticlesVal,
+        accompagnateurs: accompagnateursVal,
+        placement: placementVal
+      });
 
-    this.showToast('Concert modifié avec succès !', 'success');
-    this.closeEditModal();
-    this.renderCarnet();
+      this.showToast('Concert modifié dans Supabase !', 'success');
+      this.closeEditModal();
+      this.renderCarnet();
+    } catch (err) {
+      this.showToast(err.message, 'error');
+    }
   }
 
-  confirmDelete(id) {
+  async confirmDelete(id) {
     const item = window.dataManager.getById(id);
     if (!item) return;
 
     const nom = item.artistes || item.nom_evenement || 'cet événement';
     if (confirm(`Voulez-vous vraiment supprimer "${nom}" du ${item.date} ?`)) {
-      window.dataManager.delete(id);
-      this.showToast('Concert supprimé.', 'warning');
-      this.renderCarnet();
+      try {
+        await window.dataManager.delete(id);
+        this.showToast('Concert supprimé de Supabase.', 'warning');
+        this.renderCarnet();
+      } catch (err) {
+        this.showToast(err.message, 'error');
+      }
     }
   }
 
@@ -869,193 +863,215 @@ class ConcertsApp {
     window.statsManager.render(currentPeriod);
   }
 
-  // Section Paramètres, Coffre-fort & Sauvegardes
+  // Section Paramètres & Cloud Supabase
   setupSettings() {
-    // 1. Déverrouillage (Lock Screen)
-    const unlockForm = document.getElementById('form-unlock-vault');
-    if (unlockForm) {
-      unlockForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const pwd = document.getElementById('input-unlock-password')?.value || '';
-        const ok = await window.dataManager.unlock(pwd);
-        if (ok) {
-          document.getElementById('modal-unlock')?.classList.add('hidden');
-          document.body.style.overflow = '';
-          this.showToast('Coffre-fort déverrouillé !', 'success');
-          this.renderCarnet();
-          this.populateDatalists();
-          this.updateVaultStatusBadge();
-        } else {
-          this.showToast('Mot de passe incorrect.', 'error');
-        }
-      });
-    }
-
-    // 2. Définir / Modifier mot de passe
-    const btnTogglePw = document.getElementById('btn-toggle-vault-pw');
-    const modalSetPw = document.getElementById('modal-set-password');
-    const btnCloseSetPw = document.getElementById('btn-close-set-pw');
-    const formSetPw = document.getElementById('form-set-vault-pw');
-
-    if (btnTogglePw && modalSetPw) {
-      btnTogglePw.addEventListener('click', () => modalSetPw.classList.remove('hidden'));
-    }
-    if (btnCloseSetPw && modalSetPw) {
-      btnCloseSetPw.addEventListener('click', () => modalSetPw.classList.add('hidden'));
-    }
-    if (formSetPw) {
-      formSetPw.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const p1 = document.getElementById('input-new-password')?.value || '';
-        const p2 = document.getElementById('input-confirm-password')?.value || '';
-        if (p1 !== p2) {
-          this.showToast('Les deux mots de passe ne correspondent pas.', 'error');
-          return;
-        }
-        await window.dataManager.setPassword(p1);
-        modalSetPw.classList.add('hidden');
-        this.updateVaultStatusBadge();
-        this.showToast('Mot de passe activé (chiffrement AES-256) !', 'success');
-      });
-    }
-
-    // 3. Exporter Coffre-fort .vault
-    const exportVaultBtn = document.getElementById('btn-export-vault');
-    if (exportVaultBtn) {
-      exportVaultBtn.addEventListener('click', async () => {
-        if (!window.dataManager.isEncrypted || !window.dataManager.currentPassword) {
-          const pwd = prompt('Choisissez un mot de passe pour chiffrer ce fichier de coffre-fort :');
-          if (!pwd) return;
-          try {
-            await window.dataManager.exportVault(pwd);
-            this.showToast('Fichier mes_concerts.vault téléchargé !', 'success');
-          } catch (err) {
-            this.showToast(err.message, 'error');
-          }
-        } else {
-          try {
-            await window.dataManager.exportVault(window.dataManager.currentPassword);
-            this.showToast('Fichier mes_concerts.vault téléchargé !', 'success');
-          } catch (err) {
-            this.showToast(err.message, 'error');
-          }
-        }
-      });
-    }
-
-    // 4. Importer Coffre-fort .vault
-    const importVaultBtn = document.getElementById('btn-import-vault');
-    const inputImportVault = document.getElementById('input-import-vault');
-    const modalOpenVault = document.getElementById('modal-open-vault-file');
-    const formOpenVault = document.getElementById('form-open-vault-file');
-    const btnCloseOpenVault = document.getElementById('btn-close-open-vault');
-    let pendingVaultString = null;
-
-    if (importVaultBtn && inputImportVault) {
-      importVaultBtn.addEventListener('click', () => inputImportVault.click());
-      inputImportVault.addEventListener('change', (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (re) => {
-          pendingVaultString = re.target.result;
-          modalOpenVault.classList.remove('hidden');
-        };
-        reader.readAsText(file);
-        inputImportVault.value = '';
-      });
-    }
-
-    if (btnCloseOpenVault && modalOpenVault) {
-      btnCloseOpenVault.addEventListener('click', () => {
-        modalOpenVault.classList.add('hidden');
-        pendingVaultString = null;
-      });
-    }
-
-    if (formOpenVault) {
-      formOpenVault.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const pwd = document.getElementById('input-vault-file-pw')?.value || '';
+    // 1. Bouton Actualiser depuis Supabase
+    const refreshBtn = document.getElementById('btn-refresh-supabase');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', async () => {
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = '⏳ Chargement...';
         try {
-          const count = await window.dataManager.importVault(pendingVaultString, pwd);
-          modalOpenVault.classList.add('hidden');
-          pendingVaultString = null;
-          this.showToast(`${count} concerts déchiffrés et importés !`, 'success');
+          const list = await window.dataManager.loadFromSupabase();
           this.renderCarnet();
           this.populateDatalists();
-          this.updateVaultStatusBadge();
-        } catch (err) {
-          this.showToast(err.message, 'error');
+          this.updateSupabaseStatus();
+          this.showToast(`${list.length} concerts synchronisés avec Supabase !`, 'success');
+        } catch (e) {
+          this.showToast('Erreur synchronisation Supabase', 'error');
+        } finally {
+          refreshBtn.disabled = false;
+          refreshBtn.textContent = '🔄 Synchroniser maintenant avec Supabase';
         }
       });
     }
 
-    // 5. Bouton Export CSV
-    const exportBtn = document.getElementById('btn-export-csv');
-    if (exportBtn) {
-      exportBtn.addEventListener('click', () => {
-        window.dataManager.exportCSV();
-        this.showToast('Téléchargement du CSV nettoyé démarré !', 'success');
-      });
-    }
-
-    // 6. Bouton Import CSV
-    const fileInput = document.getElementById('input-import-csv');
-    const importBtn = document.getElementById('btn-import-csv');
-    if (importBtn && fileInput) {
-      importBtn.addEventListener('click', () => fileInput.click());
-      fileInput.addEventListener('change', (e) => {
+    // 2. Bouton Importer CSV vers Supabase
+    const inputCsv = document.getElementById('input-import-csv');
+    const uploadCleanedBtn = document.getElementById('btn-upload-cleaned-supabase');
+    if (uploadCleanedBtn && inputCsv) {
+      uploadCleanedBtn.addEventListener('click', () => inputCsv.click());
+      inputCsv.addEventListener('change', (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        if (confirm(`Importer le fichier "${file.name}" ?\n\nCliquez sur OK pour remplacer les données actuelles, ou Annuler pour ne rien faire.`)) {
-          window.dataManager.importCSV(file, true)
+        if (confirm(`Envoyer les concerts du fichier "${file.name}" directement dans Supabase ?`)) {
+          uploadCleanedBtn.disabled = true;
+          uploadCleanedBtn.textContent = '⏳ Envoi vers Supabase...';
+          window.dataManager.importCSV(file)
             .then(res => {
-              this.showToast(`${res.count} concerts importés avec succès !`, 'success');
+              this.showToast(`${res.count} concerts enregistrés dans Supabase !`, 'success');
               this.renderCarnet();
               this.populateDatalists();
-              fileInput.value = '';
+              inputCsv.value = '';
             })
             .catch(err => {
-              this.showToast(`Erreur d'import : ${err.message}`, 'error');
-              fileInput.value = '';
+              this.showToast(`Erreur Supabase : ${err.message}`, 'error');
+              inputCsv.value = '';
+            })
+            .finally(() => {
+              uploadCleanedBtn.disabled = false;
+              uploadCleanedBtn.textContent = '🚀 Envoyer concerts_cleaned.csv vers Supabase';
             });
         }
       });
     }
 
-    // 7. Bouton Vider les données
-    const clearBtn = document.getElementById('btn-clear-data');
-    if (clearBtn) {
-      clearBtn.addEventListener('click', () => {
-        if (confirm('Attention : cela supprimera tous les concerts stockés localement sur cet appareil. Êtes-vous sûre ?')) {
-          localStorage.removeItem('mes_concerts_events_v2');
-          localStorage.removeItem('mes_concerts_events_v1');
-          window.dataManager.events = [];
-          this.showToast('Toutes les données locales ont été effacées.', 'info');
+    // 3. Bouton Export CSV
+    const exportBtn = document.getElementById('btn-export-csv');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        window.dataManager.exportCSV();
+        this.showToast('Téléchargement du CSV démarré !', 'success');
+      });
+    }
+  }
+
+  // Modal Auth Supabase (Connexion / Inscription)
+  setupSupabaseAuthModal() {
+    const modal = document.getElementById('modal-supabase-auth');
+    const openBtn1 = document.getElementById('btn-open-supabase-auth');
+    const openBtn2 = document.getElementById('btn-supabase-status');
+    const closeBtn = document.getElementById('btn-close-supabase-auth');
+    const form = document.getElementById('form-supabase-login');
+    const signupBtn = document.getElementById('btn-auth-signup');
+    const logoutBtn = document.getElementById('btn-supabase-logout');
+
+    const openModal = () => {
+      if (modal) {
+        modal.classList.remove('hidden');
+        this.updateAuthModalView();
+      }
+    };
+
+    if (openBtn1) openBtn1.addEventListener('click', openModal);
+    if (openBtn2) openBtn2.addEventListener('click', openModal);
+    if (closeBtn && modal) closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+
+    // Connexion
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('input-auth-email')?.value.trim();
+        const password = document.getElementById('input-auth-password')?.value;
+        const signinBtn = document.getElementById('btn-auth-signin');
+
+        if (signinBtn) {
+          signinBtn.disabled = true;
+          signinBtn.textContent = 'Connexion...';
+        }
+
+        try {
+          const { data, error } = await window.supabaseClient.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+
+          modal.classList.add('hidden');
+          this.showToast('Connectée avec succès à Supabase !', 'success');
+          await window.dataManager.loadFromSupabase();
           this.renderCarnet();
-          this.populateDatalists();
+          this.updateSupabaseStatus();
+        } catch (err) {
+          this.showToast(`Erreur : ${err.message}`, 'error');
+        } finally {
+          if (signinBtn) {
+            signinBtn.disabled = false;
+            signinBtn.textContent = 'Se connecter';
+          }
+        }
+      });
+    }
+
+    // Inscription
+    if (signupBtn) {
+      signupBtn.addEventListener('click', async () => {
+        const email = document.getElementById('input-auth-email')?.value.trim();
+        const password = document.getElementById('input-auth-password')?.value;
+
+        if (!email || !password) {
+          this.showToast('Veuillez renseigner un email et un mot de passe (min 6 car.)', 'warning');
+          return;
+        }
+
+        signupBtn.disabled = true;
+        signupBtn.textContent = 'Création...';
+
+        try {
+          const { data, error } = await window.supabaseClient.auth.signUp({ email, password });
+          if (error) throw error;
+
+          this.showToast('Compte créé ! Vérifiez votre email pour confirmer si requis.', 'success');
+          modal.classList.add('hidden');
+          this.updateSupabaseStatus();
+        } catch (err) {
+          this.showToast(`Erreur création compte : ${err.message}`, 'error');
+        } finally {
+          signupBtn.disabled = false;
+          signupBtn.textContent = 'Créer un compte';
+        }
+      });
+    }
+
+    // Déconnexion
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', async () => {
+        try {
+          await window.supabaseClient.auth.signOut();
+          modal.classList.add('hidden');
+          this.showToast('Déconnectée de Supabase.', 'info');
+          this.updateSupabaseStatus();
+        } catch (err) {
+          this.showToast(err.message, 'error');
         }
       });
     }
   }
 
-  updateVaultStatusBadge() {
-    const badge = document.getElementById('vault-status-badge');
-    if (!badge) return;
+  updateAuthModalView() {
+    const loggedInView = document.getElementById('auth-logged-in-view');
+    const loggedOutView = document.getElementById('auth-logged-out-view');
+    const userBadge = document.getElementById('auth-user-email-badge');
 
-    if (window.dataManager.isEncrypted) {
-      badge.textContent = '🔒 Protégé par mot de passe (AES-256)';
-      badge.style.color = '#34d399';
+    if (window.dataManager.currentUser) {
+      if (loggedInView) loggedInView.classList.remove('hidden');
+      if (loggedOutView) loggedOutView.classList.add('hidden');
+      if (userBadge) userBadge.textContent = window.dataManager.currentUser.email;
     } else {
-      badge.textContent = '🔓 Local non chiffré';
-      badge.style.color = '#94a3b8';
+      if (loggedInView) loggedInView.classList.add('hidden');
+      if (loggedOutView) loggedOutView.classList.remove('hidden');
     }
   }
 
-  // Suggestions et datalists automatiques
+  updateSupabaseStatus() {
+    const badge = document.getElementById('supabase-status-badge');
+    const userDisplay = document.getElementById('supabase-user-display');
+    const headerBtn = document.getElementById('btn-supabase-status');
+
+    const isConnected = window.dataManager.supabaseConnected;
+    const user = window.dataManager.currentUser;
+
+    if (badge) {
+      if (isConnected) {
+        badge.textContent = `🟢 Connecté (${window.dataManager.getAll().length} concerts)`;
+        badge.style.color = '#34d399';
+      } else {
+        badge.textContent = `⚪ Non connecté / En attente`;
+        badge.style.color = '#94a3b8';
+      }
+    }
+
+    if (userDisplay) {
+      if (user) {
+        userDisplay.innerHTML = `<strong>Compte :</strong> ${this.escape(user.email)} (Sécurisé RLS)`;
+      } else {
+        userDisplay.innerHTML = `<strong>Compte :</strong> Mode Clé Publishable`;
+      }
+    }
+
+    if (headerBtn) {
+      headerBtn.style.color = isConnected ? '#34d399' : '#94a3b8';
+    }
+  }
+
   populateDatalists() {
     this.fillDatalist('dl-types', TYPES_EVENT_DEFAUT.concat(window.dataManager.getUniqueValues('type')));
     this.fillDatalist('dl-lieux', window.dataManager.getUniqueValues('lieu'));
@@ -1073,7 +1089,6 @@ class ConcertsApp {
     dl.innerHTML = unique.map(v => `<option value="${this.escape(v)}">`).join('');
   }
 
-  // Guide installation iPhone
   setupInstallPrompt() {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
@@ -1115,7 +1130,6 @@ class ConcertsApp {
     }
   }
 
-  // Notifications Toast
   showToast(message, type = 'info') {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
@@ -1163,7 +1177,6 @@ class ConcertsApp {
   }
 }
 
-// Initialisation au chargement du DOM
 document.addEventListener('DOMContentLoaded', () => {
   window.app = new ConcertsApp();
 });
