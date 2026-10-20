@@ -97,6 +97,12 @@ class ConcertsDataManager {
   async loadFromSupabase() {
     if (!window.supabaseClient) return [];
 
+    // Si aucun utilisateur n'est connecté, aucun concert n'est visible (sécurité stricte)
+    if (!this.currentUser) {
+      this.events = [];
+      return [];
+    }
+
     try {
       const { data, error } = await window.supabaseClient
         .from('concerts')

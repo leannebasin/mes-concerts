@@ -30,8 +30,11 @@
       <h1 class="app-title">Mes Concerts</h1>
     </div>
     <div class="header-actions">
-      <button class="btn-icon-header" id="btn-supabase-status" title="Connexion Cloud Supabase">
-        ☁️
+      <span id="header-user-email" class="chip-sm hidden" style="font-size: 0.8rem; background: rgba(139, 92, 246, 0.2); color: #c4b5fd; padding: 6px 12px; border-radius: var(--radius-full); cursor: pointer;" title="Votre compte">
+        👤 Compte
+      </span>
+      <button class="btn-icon-header hidden" id="btn-header-logout" title="Se déconnecter">
+        🚪
       </button>
       <button class="btn-icon-header" id="btn-open-install-guide" title="Guide installation iPhone">
         📱
@@ -53,6 +56,39 @@
       <button class="btn-close-banner" id="btn-close-banner" title="Fermer">×</button>
     </div>
   </div>
+
+  <!-- =========================================================================
+       VUE 0 : AUTHENTIFICATION MULTI-COMPTES (SEULEMENT L'UTILISATEUR VOIT SES CONCERTS)
+       ========================================================================= -->
+  <section class="view-container" id="view-auth">
+    <div class="form-card" style="max-width: 440px; margin: 30px auto; border: 1px solid rgba(139, 92, 246, 0.4); text-align: center; padding: 28px 22px;">
+      <div style="font-size: 3.2rem; margin-bottom: 8px;">🎫</div>
+      <h2 style="color: #fff; font-size: 1.4rem; margin-bottom: 6px;">Mes Concerts</h2>
+      <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 22px;" id="auth-screen-desc">
+        Connectez-vous pour accéder à votre carnet personnel et sécurisé.
+      </p>
+
+      <form id="form-auth-screen">
+        <div class="form-group" style="text-align: left;">
+          <label class="form-label" for="auth-screen-email">Adresse Email</label>
+          <input type="email" id="auth-screen-email" class="form-control" placeholder="ex: leanne.basin@gmail.com" required>
+        </div>
+
+        <div class="form-group" style="text-align: left;">
+          <label class="form-label" for="auth-screen-password">Mot de passe</label>
+          <input type="password" id="auth-screen-password" class="form-control" placeholder="••••••••" minlength="6" required>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="btn-auth-screen-submit" style="margin-top: 10px;">
+          Se connecter
+        </button>
+
+        <button type="button" class="btn btn-secondary" id="btn-auth-screen-toggle" style="margin-top: 10px;">
+          Créer un nouveau compte
+        </button>
+      </form>
+    </div>
+  </section>
 
   <!-- =========================================================================
        VUE 1 : CARNET / HISTORIQUE

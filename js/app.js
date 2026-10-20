@@ -29,6 +29,7 @@ class ConcertsApp {
     this.setupEditModal();
     this.setupSettings();
     this.setupSupabaseAuthModal();
+    this.setupMainAuthScreen();
     this.setupInstallPrompt();
 
     // 3. Initialisation des données Cloud Supabase
@@ -36,13 +37,41 @@ class ConcertsApp {
       await window.dataManager.init();
     }
 
-    // 4. Rendu initial
-    this.renderCarnet();
+    // 4. État d'authentification initial & affichage de la bonne vue
+    this.updateUserSessionState();
     this.populateDatalists();
-    this.updateSupabaseStatus();
 
     // 5. Détection iOS Standalone
     this.checkStandaloneMode();
+  }
+
+  updateUserSessionState() {
+    const user = window.dataManager.currentUser;
+    const headerEmail = document.getElementById('header-user-email');
+    const headerLogout = document.getElementById('btn-header-logout');
+    const bottomNav = document.querySelector('.bottom-nav');
+
+    if (user) {
+      if (headerEmail) {
+        headerEmail.textContent = `👤 ${user.email}`;
+        headerEmail.classList.remove('hidden');
+      }
+      if (headerLogout) {
+        headerLogout.classList.remove('hidden');
+      }
+      if (bottomNav) {
+        bottomNav.classList.remove('hidden');
+      }
+      this.switchTab('carnet');
+      this.renderCarnet();
+    } else {
+      if (headerEmail) headerEmail.classList.add('hidden');
+      if (headerLogout) headerLogout.classList.add('hidden');
+      if (bottomNav) bottomNav.classList.add('hidden');
+      this.switchTab('auth');
+    }
+
+    this.updateSupabaseStatus();
   }
 
   // Navigation entre les onglets
@@ -1018,9 +1047,88 @@ class ConcertsApp {
           await window.supabaseClient.auth.signOut();
           modal.classList.add('hidden');
           this.showToast('Déconnectée de Supabase.', 'info');
-          this.updateSupabaseStatus();
+          this.updateUserSessionState();
         } catch (err) {
           this.showToast(err.message, 'error');
+        }
+      });
+    }
+
+    // Déconnexion depuis l'en-tête
+    const headerLogoutBtn = document.getElementById('btn-header-logout');
+    if (headerLogoutBtn) {
+      headerLogoutBtn.addEventListener('click', async () => {
+        if (confirm('Voulez-vous vous déconnecter ?')) {
+          await window.supabaseClient.auth.signOut();
+          this.showToast('Déconnectée.', 'info');
+          this.updateUserSessionState();
+        }
+      });
+    }
+  }
+
+  // Écran d'authentification principal (Accès réservé par utilisateur)
+  setupMainAuthScreen() {
+    const form = document.getElementById('form-auth-screen');
+    const toggleBtn = document.getElementById('btn-auth-screen-toggle');
+    const submitBtn = document.getElementById('btn-auth-screen-submit');
+    const desc = document.getElementById('auth-screen-desc');
+    let isSignupMode = false;
+
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        isSignupMode = !isSignupMode;
+        if (isSignupMode) {
+          submitBtn.textContent = 'Créer mon compte';
+          toggleBtn.textContent = 'J\'ai déjà un compte (Se connecter)';
+          if (desc) desc.textContent = 'Créez votre compte pour démarrer votre carnet de concerts sécurisé.';
+        } else {
+          submitBtn.textContent = 'Se connecter';
+          toggleBtn.textContent = 'Créer un nouveau compte';
+          if (desc) desc.textContent = 'Connectez-vous pour accéder à votre carnet personnel et sécurisé.';
+        }
+      });
+    }
+
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('auth-screen-email')?.value.trim();
+        const password = document.getElementById('auth-screen-password')?.value;
+
+        if (!email || !password) return;
+
+        submitBtn.disabled = true;
+        const originalText = submitBtn.textContent;
+        submitBtn.textContent = 'Patientez...';
+
+        try {
+          if (isSignupMode) {
+            const { data, error } = await window.supabaseClient.auth.signUp({ email, password });
+            if (error) throw error;
+            this.showToast('Compte créé avec succès !', 'success');
+            // Si session automatique créée
+            if (data.session) {
+              window.dataManager.currentUser = data.user;
+              await window.dataManager.loadFromSupabase();
+              this.updateUserSessionState();
+            } else {
+              this.showToast('Compte créé ! Vous pouvez maintenant vous connecter.', 'info');
+              toggleBtn.click();
+            }
+          } else {
+            const { data, error } = await window.supabaseClient.auth.signInWithPassword({ email, password });
+            if (error) throw error;
+            window.dataManager.currentUser = data.user;
+            await window.dataManager.loadFromSupabase();
+            this.updateUserSessionState();
+            this.showToast(`Bienvenue ${email} !`, 'success');
+          }
+        } catch (err) {
+          this.showToast(`Erreur : ${err.message}`, 'error');
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = originalText;
         }
       });
     }
