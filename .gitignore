@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+Thumbs.db
+
+# Fichiers personnels et données privées (ne jamais envoyer sur GitHub)
+concerts.csv
+concerts_cleaned.csv
+cleaned_concerts.json
+*.vault
+scripts/
