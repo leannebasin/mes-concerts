@@ -133,6 +133,7 @@ class ConcertsDataManager {
       item.premiere_partie = cleanArtistNames(item.premiere_partie);
       item.guests = cleanArtistNames(item.guests);
       item.cout_total = this.calculateCost(item);
+      item.note = (item.note !== undefined && item.note !== null && item.note !== '') ? Number(item.note) : null;
       if (!item.annee && item.date) {
         item.annee = item.date.includes('-') ? item.date.split('-')[0] : 'Inconnue';
       }
@@ -176,7 +177,8 @@ class ConcertsDataManager {
       merch: data.merch_inconnu ? null : (data.merch !== null && data.merch !== '' ? Number(data.merch) : null),
       articles_merch: data.articles_merch || '',
       accompagnateurs: data.accompagnateurs || '',
-      placement: data.placement || 'Fosse'
+      placement: data.placement || 'Fosse',
+      note: (data.note !== undefined && data.note !== null && data.note !== '') ? Number(data.note) : null
     };
 
     if (this.currentUser) {
@@ -214,7 +216,10 @@ class ConcertsDataManager {
       artistes: cleanArtistNames(data.artistes !== undefined ? data.artistes : current.artistes),
       premiere_partie: cleanArtistNames(data.premiere_partie !== undefined ? data.premiere_partie : current.premiere_partie),
       guests: cleanArtistNames(data.guests !== undefined ? data.guests : current.guests),
-      annee: (data.date && data.date.includes('-')) ? data.date.split('-')[0] : current.annee
+      annee: (data.date && data.date.includes('-')) ? data.date.split('-')[0] : current.annee,
+      note: (data.note !== undefined && data.note !== null && data.note !== '')
+        ? Number(data.note)
+        : (data.note === null ? null : (current.note || null))
     };
 
     updated.prix_billet = updated.prix_billet_inconnu ? null : (updated.prix_billet !== null && updated.prix_billet !== '' ? Number(updated.prix_billet) : null);
@@ -240,6 +245,51 @@ class ConcertsDataManager {
 
     this.events[idx] = updated;
     return updated;
+  }
+
+  // Noter rapidement un concert (1 à 5 étoiles ou null)
+  async rateConcert(id, note) {
+    const val = (note !== null && note !== undefined && note !== '' && Number(note) > 0) ? Number(note) : null;
+    return await this.update(id, { note: val });
+  }
+
+  // Concerts à venir (date >= aujourd'hui), tri chronologique croissant (plus proche en premier)
+  getUpcomingConcerts() {
+    const today = new Date().toISOString().split('T')[0];
+    return this.events
+      .filter(e => e.date && e.date >= today)
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }
+
+  // Concerts passés (date < aujourd'hui), tri antichronologique décroissant (plus récent en premier)
+  getPastConcerts() {
+    const today = new Date().toISOString().split('T')[0];
+    return this.events
+      .filter(e => !e.date || e.date < today)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }
+
+  // Concerts classés par note (du plus aimé au moins aimé)
+  getRankedConcerts(filter = 'all') {
+    if (filter === 'unrated') {
+      return this.events
+        .filter(e => !e.note || e.note < 1)
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    }
+
+    let list = this.events.filter(e => e.note && e.note >= 1 && e.note <= 5);
+
+    if (filter !== 'all') {
+      const targetNote = Number(filter);
+      if (!isNaN(targetNote)) {
+        list = list.filter(e => e.note === targetNote);
+      }
+    }
+
+    return list.sort((a, b) => {
+      if (b.note !== a.note) return b.note - a.note;
+      return (b.date || '').localeCompare(a.date || '');
+    });
   }
 
   async delete(id) {
@@ -325,7 +375,7 @@ class ConcertsDataManager {
       "Transport inconnu", "Transport (€)",
       "Logement inconnu", "Logement (€)",
       "Merch inconnu", "Merch (€)", "Articles merch",
-      "Coût total (€)", "Accompagnateur(s)", "Placement"
+      "Coût total (€)", "Accompagnateur(s)", "Placement", "Note"
     ];
 
     const escapeCSV = (val) => {
@@ -363,7 +413,8 @@ class ConcertsDataManager {
         e.articles_merch || '',
         e.cout_total !== null && e.cout_total !== undefined ? e.cout_total : '',
         e.accompagnateurs || '',
-        e.placement || ''
+        e.placement || '',
+        e.note !== null && e.note !== undefined ? e.note : ''
       ];
       rows.push(row.map(escapeCSV).join(','));
     });
@@ -432,7 +483,8 @@ class ConcertsDataManager {
                 merch: toNum(row["Merch (€)"] || row["Merch"]),
                 articles_merch: row["Articles merch"] || '',
                 accompagnateurs: row["Accompagnateur(s)"] || '',
-                placement: row["Placement"] || 'Fosse'
+                placement: row["Placement"] || 'Fosse',
+                note: toNum(row["Note"] || row["Note (1-5)"])
               };
 
               if (this.currentUser) {

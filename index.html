@@ -30,17 +30,20 @@
       <h1 class="app-title">Mes Concerts</h1>
     </div>
     <div class="header-actions">
-      <span id="header-user-email" class="chip-sm hidden" style="font-size: 0.8rem; background: rgba(139, 92, 246, 0.2); color: #c4b5fd; padding: 6px 12px; border-radius: var(--radius-full); cursor: pointer;" title="Votre compte">
+      <span id="header-user-email" class="chip-sm hidden" title="Votre compte">
         👤 Compte
       </span>
+      <button class="btn-icon-header" id="btn-header-settings" title="Paramètres & Données">
+        ⚙️
+      </button>
       <button class="btn-icon-header hidden" id="btn-header-logout" title="Se déconnecter">
         🚪
       </button>
-      <button class="btn-icon-header" id="btn-open-install-guide" title="Guide installation iPhone">
-        📱
-      </button>
     </div>
   </header>
+
+  <!-- Bannière d'alerte / Rappel dynamique (Concert aujourd'hui ou hier) -->
+  <div id="app-reminder-banner" class="reminder-banner hidden"></div>
 
   <!-- Bannière incitative d'installation iOS (affichée uniquement dans Safari si non installé) -->
   <div class="ios-banner hidden" id="ios-install-banner">
@@ -136,6 +139,68 @@
       </table>
     </div>
   </main>
+
+  <!-- =========================================================================
+       VUE : CONCERTS À VENIR & COMPTE À REBOURS
+       ========================================================================= -->
+  <section class="view-container" id="view-a-venir">
+    <!-- Carte d'information / Activation notifications -->
+    <div class="notif-permission-box" id="notif-permission-box">
+      <div class="notif-box-content">
+        <span class="notif-box-icon">🔔</span>
+        <div class="notif-box-text">
+          <strong>Rappels automatiques</strong>
+          <span>Recevez une alerte le jour du concert et le lendemain pour noter vos souvenirs.</span>
+        </div>
+      </div>
+      <button class="btn btn-sm btn-primary" id="btn-enable-notifications">Activer</button>
+    </div>
+
+    <!-- Prochain concert à la Une (Hero avec compte à rebours géant) -->
+    <div id="upcoming-hero-container"></div>
+
+    <!-- En-tête de la liste des autres concerts à venir -->
+    <div class="upcoming-header-bar">
+      <h3 class="upcoming-section-title">📅 Autres concerts prévus</h3>
+      <span class="badge-count" id="upcoming-count">0</span>
+    </div>
+
+    <!-- Liste des cartes de concerts à venir avec compte à rebours -->
+    <div class="upcoming-cards-grid" id="upcoming-list"></div>
+  </section>
+
+  <!-- =========================================================================
+       VUE : CLASSEMENT & NOTES DES CONCERTS
+       ========================================================================= -->
+  <section class="view-container" id="view-classement">
+    <!-- Résumé KPI du classement -->
+    <div class="ranking-header-card">
+      <div class="ranking-kpi-item">
+        <span class="ranking-kpi-val" id="ranking-rated-count">0</span>
+        <span class="ranking-kpi-lbl">Concerts notés</span>
+      </div>
+      <div class="ranking-kpi-divider"></div>
+      <div class="ranking-kpi-item">
+        <span class="ranking-kpi-val" id="ranking-avg-score">- / 5</span>
+        <span class="ranking-kpi-lbl">Note moyenne</span>
+      </div>
+    </div>
+
+    <!-- Podium des 3 Meilleurs Concerts (1er, 2e, 3e) -->
+    <div class="podium-wrapper" id="podium-container"></div>
+
+    <!-- Filtres par note -->
+    <div class="pill-carousel" id="ranking-filter-pills">
+      <button class="pill active" data-filter="all">Tous les classés</button>
+      <button class="pill" data-filter="5">⭐⭐⭐⭐⭐ (5★)</button>
+      <button class="pill" data-filter="4">⭐⭐⭐⭐ (4★)</button>
+      <button class="pill" data-filter="3">⭐⭐⭐ (3★)</button>
+      <button class="pill" data-filter="unrated">✍️ À noter</button>
+    </div>
+
+    <!-- Liste ordonnée de tous les concerts classés -->
+    <div class="ranked-list-container" id="ranked-list"></div>
+  </section>
 
   <!-- =========================================================================
        VUE 2 : NOUVEAU CONCERT (FORMULAIRE)
@@ -293,6 +358,23 @@
           <option value="Festival / Debout extérieur">Festival / Debout extérieur</option>
           <option value="Autre">Autre</option>
         </select>
+      </div>
+
+      <!-- Note personnelle (1 à 5 étoiles) -->
+      <div class="form-group">
+        <label class="form-label">Note personnelle (facultatif)</label>
+        <div class="star-rating-container" id="add-star-rating-box">
+          <div class="star-rating-widget" data-target="add-note">
+            <span class="star-item" data-value="1">★</span>
+            <span class="star-item" data-value="2">★</span>
+            <span class="star-item" data-value="3">★</span>
+            <span class="star-item" data-value="4">★</span>
+            <span class="star-item" data-value="5">★</span>
+          </div>
+          <span class="star-rating-label" id="add-rating-label">Non noté</span>
+          <button type="button" class="btn-clear-rating hidden" id="add-btn-clear-rating" title="Effacer la note">✕</button>
+          <input type="hidden" id="add-note" value="">
+        </div>
       </div>
 
       <!-- Total Calculé en Direct -->
@@ -586,6 +668,23 @@
             </select>
           </div>
 
+          <!-- Note personnelle (1 à 5 étoiles) -->
+          <div class="form-group">
+            <label class="form-label">Note personnelle (facultatif)</label>
+            <div class="star-rating-container" id="edit-star-rating-box">
+              <div class="star-rating-widget" data-target="edit-note">
+                <span class="star-item" data-value="1">★</span>
+                <span class="star-item" data-value="2">★</span>
+                <span class="star-item" data-value="3">★</span>
+                <span class="star-item" data-value="4">★</span>
+                <span class="star-item" data-value="5">★</span>
+              </div>
+              <span class="star-rating-label" id="edit-rating-label">Non noté</span>
+              <button type="button" class="btn-clear-rating hidden" id="edit-btn-clear-rating" title="Effacer la note">✕</button>
+              <input type="hidden" id="edit-note" value="">
+            </div>
+          </div>
+
           <div class="live-cost-banner">
             <span class="live-cost-label">Total recalculé :</span>
             <span class="live-cost-value" id="edit-total-live">0.00 €</span>
@@ -698,12 +797,21 @@
   </div>
 
   <!-- =========================================================================
-       BARRE DE NAVIGATION BASSE (iOS Bottom Bar)
+       BARRE DE NAVIGATION BASSE (iOS Bottom Bar 5 Onglets)
        ========================================================================= -->
   <nav class="bottom-nav">
     <button class="nav-item active" data-tab="carnet">
       <span class="nav-icon">📋</span>
       <span class="nav-label">Carnet</span>
+    </button>
+    <button class="nav-item" data-tab="a-venir">
+      <span class="nav-icon">⏳</span>
+      <span class="nav-label">À venir</span>
+      <span class="nav-badge hidden" id="nav-badge-upcoming">0</span>
+    </button>
+    <button class="nav-item" data-tab="classement">
+      <span class="nav-icon">🏆</span>
+      <span class="nav-label">Top</span>
     </button>
     <button class="nav-item" data-tab="ajouter">
       <span class="nav-icon">➕</span>
@@ -712,10 +820,6 @@
     <button class="nav-item" data-tab="stats">
       <span class="nav-icon">📊</span>
       <span class="nav-label">Stats</span>
-    </button>
-    <button class="nav-item" data-tab="settings">
-      <span class="nav-icon">⚙️</span>
-      <span class="nav-label">Données</span>
     </button>
   </nav>
 
